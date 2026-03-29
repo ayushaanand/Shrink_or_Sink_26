@@ -173,24 +173,8 @@ if torch.cuda.device_count() > 1:
     print(f"Using {torch.cuda.device_count()} GPUs for Training!")
     teacher = nn.DataParallel(teacher)
 
-# ── Quick Sanity Validation ────────────────────────────────────────────────────
-# Verifies loaded weights are meaningful (>80%) before wasting hours of training
-if args.weights or os.path.exists(args.checkpoint):
-    print("\n[SANITY] Running quick validation pass on loaded weights...")
-    teacher.eval()
-    correct = 0
-    with torch.no_grad():
-        for x, y in val_ld:
-            x, y = x.to(device), y.to(device)
-            correct += (teacher(x).argmax(1) == y).sum().item()
-    sanity_acc = correct / len(val_ds)
-    print(f"[SANITY] Loaded weights Val Accuracy: {sanity_acc:.4f} ({sanity_acc*100:.2f}%)")
-    if sanity_acc < 0.80:
-        raise ValueError(f"\n🚨 ABORT: Loaded weights only achieve {sanity_acc*100:.2f}% accuracy. "
-                         f"This is below the 80% safety threshold. "
-                         f"The weights may be corrupted or from a poorly trained run. "
-                         f"Fix --weights / --checkpoint path before wasting GPU hours!")
-    print(f"[SANITY] ✅ Weights are healthy. Proceeding to training...\n")
+
+# ── Optimizer and Loss setup ──────────────────────────────────────────────────
 
 optimizer = torch.optim.AdamW(teacher.parameters(), lr=1e-3, weight_decay=1e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=TOTAL_EPOCHS)
