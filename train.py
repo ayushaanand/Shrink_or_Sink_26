@@ -117,6 +117,11 @@ def train(args):
     train_ds = datasets.STL10(root=args.dataset_path, split="train", download=True, transform=train_tf)
     unlab_ds = datasets.STL10(root=args.dataset_path, split="unlabeled", download=True, transform=train_tf)
     
+    teacher = get_teacher(args.teacher_path, device)
+    if torch.cuda.device_count() > 1:
+        print(f"Using {torch.cuda.device_count()} GPUs for Teacher!")
+        teacher = nn.DataParallel(teacher)
+
     if device.type != 'mps':
         print("\n⚡ [Kaggle Hyperspeed Mode]: Caching 105k images into RAM and precomputing Teacher Logits...")
         raw_chw = np.concatenate([train_ds.data, unlab_ds.data], axis=0)
@@ -155,11 +160,6 @@ def train(args):
         generator=g
     )
 
-    teacher = get_teacher(args.teacher_path, device)
-    if torch.cuda.device_count() > 1:
-        print(f"Using {torch.cuda.device_count()} GPUs for Teacher!")
-        teacher = nn.DataParallel(teacher)
-    
     print("Initializing tiny Student Model from model.py...")
     student = DynamicNet().to(device)
     if torch.cuda.device_count() > 1:
