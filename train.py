@@ -73,7 +73,13 @@ def get_teacher(path, device, retries=3):
 
 def train(args):
     set_seed(42)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+        
     print(f"Device: {device}")
 
     # STL-10 augmentations (ColorJitter + RandCrop/Flip)

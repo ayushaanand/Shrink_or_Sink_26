@@ -15,7 +15,13 @@ from torch.utils.data import DataLoader
 from model import DynamicNet
 
 def evaluate(dataset_path, model_path):
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    if torch.cuda.is_available():
+        device = torch.device('cuda')
+    elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+        device = torch.device('mps')
+    else:
+        device = torch.device('cpu')
+        
     print(f"Using device: {device}")
 
     # STL-10 basic validation transforms (no augmentation!)
