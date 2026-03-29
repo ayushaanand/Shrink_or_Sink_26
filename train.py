@@ -42,12 +42,19 @@ def seed_worker(worker_id):
     random.seed(worker_seed)
 
 def kd_loss(logits, teacher_logits, labels, T=4.0, alpha=0.9):
-    """Knowledge Distillation Loss combining hard labels and soft teacher probabilities."""
-    loss_ce = F.cross_entropy(logits, labels)
+    """Knowledge Distillation Loss combining hard labels and soft teacher probabilities.
+    Unlabeled samples (y=-1) use the teacher's argmax as a pseudo-label for CE,
+    matching the reference train_recipe.py implementation exactly.
+    """
     loss_kd = nn.KLDivLoss(reduction='batchmean')(
         F.log_softmax(logits/T, dim=1),
         F.softmax(teacher_logits/T, dim=1)
     ) * (T * T)
+    
+    # Substitute teacher pseudo-labels for unlabeled images (y == -1)
+    hard_labels = torch.where(labels == -1, teacher_logits.argmax(dim=1), labels)
+    loss_ce = F.cross_entropy(logits, hard_labels, label_smoothing=0.1)
+    
     return (1. - alpha) * loss_ce + alpha * loss_kd
 
 class RAMCachedSTL10(Dataset):
@@ -108,7 +115,7 @@ def train(args):
     train_tf = transforms.Compose([
         transforms.RandomCrop(96, padding=12),
         transforms.RandomHorizontalFlip(),
-        transforms.ColorJitter(0.2, 0.2, 0.2),
+        transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.4467, 0.4398, 0.4066], std=[0.2603, 0.2566, 0.2713]),
     ])
@@ -167,7 +174,7 @@ def train(args):
         student = nn.DataParallel(student)
     
     optimizer = torch.optim.AdamW(student.parameters(), lr=args.lr, weight_decay=1e-4)
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=1e-6)
 
     start_epoch = 1
     if os.path.exists(args.checkpoint):
