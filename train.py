@@ -17,7 +17,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import datasets, transforms, models
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
+from PIL import Image
 
 
 from model import DynamicNet
@@ -48,6 +49,27 @@ def kd_loss(logits, teacher_logits, labels, T=4.0, alpha=0.9):
         F.softmax(teacher_logits/T, dim=1)
     ) * (T * T)
     return (1. - alpha) * loss_ce + alpha * loss_kd
+
+class RAMCachedSTL10(Dataset):
+    """Stores all 105k uint8 images into RAM for hyperspeed distillation. Disabled natively on 'mps' fallback."""
+    def __init__(self, stl10_datasets, transform=None, teacher_logits=None):
+        self.transform = transform
+        raw_data = np.concatenate([ds.data for ds in stl10_datasets], axis=0)
+        self.data = np.transpose(raw_data, (0, 2, 3, 1))
+        self.labels = np.concatenate([ds.labels for ds in stl10_datasets], axis=0)
+        self.teacher_logits = teacher_logits
+        
+    def __len__(self):
+        return len(self.data)
+        
+    def __getitem__(self, index):
+        img = Image.fromarray(self.data[index])
+        if self.transform is not None:
+            img = self.transform(img)
+        target = int(self.labels[index])
+        if self.teacher_logits is not None:
+            return img, target, self.teacher_logits[index]
+        return img, target
 
 def get_teacher(path, device, retries=3):
     """Loads the pre-trained Ultimate Teacher (ResNet-50) robustly against network I/O failures."""
@@ -91,14 +113,40 @@ def train(args):
         transforms.Normalize(mean=[0.4467, 0.4398, 0.4066], std=[0.2603, 0.2566, 0.2713]),
     ])
     
-    print(f"Loading STL-10 training set to '{args.dataset_path}'...")
+    print(f"Loading native STL-10 labeled (5k) + unlabeled (100k) datasets to '{args.dataset_path}'...")
     train_ds = datasets.STL10(root=args.dataset_path, split="train", download=True, transform=train_tf)
+    unlab_ds = datasets.STL10(root=args.dataset_path, split="unlabeled", download=True, transform=train_tf)
+    
+    if device.type != 'mps':
+        print("\n⚡ [Kaggle Hyperspeed Mode]: Caching 105k images into RAM and precomputing Teacher Logits...")
+        raw_chw = np.concatenate([train_ds.data, unlab_ds.data], axis=0)
+        _norm = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=[0.4467, 0.4398, 0.4066], std=[0.2603, 0.2566, 0.2713])])
+        
+        class _InferDs(Dataset):
+            def __init__(self, chw): self.d = np.transpose(chw, (0, 2, 3, 1))
+            def __len__(self): return len(self.d)
+            def __getitem__(self, i): return _norm(Image.fromarray(self.d[i]))
+            
+        infer_ld = DataLoader(_InferDs(raw_chw), batch_size=512, shuffle=False, num_workers=2)
+        all_logits = []
+        with torch.no_grad():
+            for x in infer_ld:
+                all_logits.append(teacher(x.to(device)).cpu().half())
+        teacher_logits = torch.cat(all_logits, dim=0)
+        
+        print("✅ Logits successfully cached natively into RAM! System will train at Maximum IPC.")
+        # Override the transform inside the class internally so we don't double transform
+        combined_ds = RAMCachedSTL10([train_ds, unlab_ds], transform=train_tf, teacher_logits=teacher_logits)
+    else:
+        from torch.utils.data import ConcatDataset
+        print("🍎 [Apple MPS Fallback]: Executing via native PyTorch dataset pipelines for maximum stability.")
+        combined_ds = ConcatDataset([train_ds, unlab_ds])
     
     g = torch.Generator()
     g.manual_seed(42)
     
     train_ld = DataLoader(
-        train_ds, 
+        combined_ds, 
         batch_size=128, 
         shuffle=True, 
         num_workers=2, 
@@ -139,11 +187,16 @@ def train(args):
         student.train()
         total_loss = 0.0
         
-        for step, (x, y) in enumerate(train_ld):
-            x, y = x.to(device), y.to(device)
-            
-            with torch.no_grad():
-                t_logits = teacher(x)
+        for step, batch in enumerate(train_ld):
+            if len(batch) == 3:
+                x, y, t_logits = batch
+                x, y = x.to(device), y.to(device)
+                t_logits = t_logits.to(device).float()
+            else:
+                x, y = batch
+                x, y = x.to(device), y.to(device)
+                with torch.no_grad():
+                    t_logits = teacher(x)
                 
             optimizer.zero_grad()
             s_logits = student(x)
