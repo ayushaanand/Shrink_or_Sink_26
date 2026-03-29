@@ -43,11 +43,18 @@ parser.add_argument("--checkpoint", type=str, default="/content/drive/MyDrive/so
 parser.add_argument("--batch", type=int, default=128)
 parser.add_argument("--burn-in", type=int, default=50)
 parser.add_argument("--mastery", type=int, default=150)
+parser.add_argument("--epochs", type=int, default=0, help="Total training epochs (overrides --burn-in and --mastery)")
 parser.add_argument("--strictness", type=float, default=0.98, help="Confidence threshold for pseudo-labels")
 parser.add_argument("--weights", type=str, default="", help="Path to initialized weights (for finetuning/warm restart)")
 args = parser.parse_args()
 
-TOTAL_EPOCHS = args.burn_in + args.mastery
+# Calculate total epochs based on arguments
+if args.epochs > 0:
+    args.burn_in = min(50, args.epochs // 4) # Adjust burn-in if epochs are very small
+    args.mastery = args.epochs - args.burn_in
+    TOTAL_EPOCHS = args.epochs
+else:
+    TOTAL_EPOCHS = args.burn_in + args.mastery
 if torch.cuda.is_available():
     device = torch.device('cuda')
 elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
