@@ -64,3 +64,19 @@ While the training scripts are technically universal and cross-platform (CUDA/MP
 
 *   **Benchmarked Speed**: On Kaggle, training the student model requires approximately **81 seconds per epoch** after the initial RAM-caching of the 105k images.
 *   **Other Hardware**: Systems without high-speed NVMe/RAM bandwidth or multi-GPU support may encounter significantly longer epoch times. If running on a local machine with limited VRAM, consider disabling the RAM-caching feature in `train.py`.
+
+---
+
+## 💾 Resuming & Checkpoints
+
+Both training scripts are designed to be "unkillable" and will save their state every epoch.
+
+### 1. Automatic Resumption
+If a training run is interrupted, simply run the same command again. Both `train.py` and `teacher_train.py` will look for their respective checkpoint files (`student_checkpoint.pth` and `teacher_checkpoint.pth`) and resume exactly from the last completed epoch.
+
+### 2. Warm Starting (Teacher Only)
+If you have a trained model but want to start a fresh 300-epoch run using those weights as a starting point (e.g., for refined pseudo-labeling):
+```bash
+python teacher_train.py --weights teacher_best.pth --epochs 300
+```
+This will start from **Epoch 1** but with the "intelligence" of your previous model already loaded.
