@@ -58,6 +58,7 @@ def main():
     parser.add_argument("--widths", type=int, nargs='+', default=None, help="Manual override for DynamicNet widths")
     parser.add_argument("--depths", type=int, nargs='+', default=None, help="Manual override for DynamicNet depths")
     parser.add_argument("--no-download", action="store_true", help="Skip dataset download")
+    parser.add_argument("--batch-size", type=int, default=256)
     args = parser.parse_args()
 
     # ── Device Selection (CUDA -> MPS -> CPU) ─────────────────────────
