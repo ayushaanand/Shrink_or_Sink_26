@@ -55,7 +55,9 @@ def main():
     parser = argparse.ArgumentParser(description="APEIREON Model Evaluation")
     parser.add_argument("--dataset-path", type=str, required=True, help="Path to STL-10 dataset")
     parser.add_argument("--model-path", type=str, required=True, help="Path to .pth model weights")
-    parser.add_argument("--batch-size", type=int, default=256)
+    parser.add_argument("--widths", type=int, nargs='+', default=None, help="Manual override for DynamicNet widths")
+    parser.add_argument("--depths", type=int, nargs='+', default=None, help="Manual override for DynamicNet depths")
+    parser.add_argument("--no-download", action="store_true", help="Skip dataset download")
     args = parser.parse_args()
 
     # ── Device Selection (CUDA -> MPS -> CPU) ─────────────────────────
@@ -74,12 +76,16 @@ def main():
     # Handle common wrappers
     raw_sd = ckpt.get("model", ckpt.get("state_dict", ckpt.get("model_state_dict", ckpt)))
     widths, depths, cleaned_sd, model_type = infer_architecture(raw_sd)
+    
+    # Override inferred params ONLY if CLI args are explicitly provided
+    final_widths = args.widths if args.widths is not None else widths
+    final_depths = args.depths if args.depths is not None else depths
 
     if model_type == "teacher":
         model = models.resnet50(weights=None)
         model.fc = nn.Linear(model.fc.in_features, 10)
     else:
-        model = DynamicNet(widths=widths, depths=depths)
+        model = DynamicNet(widths=final_widths, depths=final_depths)
 
     model.load_state_dict(cleaned_sd, strict=True)
     model.to(device).eval()
@@ -89,7 +95,7 @@ def main():
         T.ToTensor(),
         T.Normalize(mean=[0.4467, 0.4398, 0.4066], std=[0.2603, 0.2566, 0.2713]),
     ])
-    test_ds = torchvision.datasets.STL10(root=args.dataset_path, split="test", download=True, transform=transform)
+    test_ds = torchvision.datasets.STL10(root=args.dataset_path, split="test", download=not args.no_download, transform=transform)
     test_dl = DataLoader(test_ds, batch_size=args.batch_size, shuffle=False, num_workers=2, pin_memory=True)
 
     # ── Inference Pass ────────────────────────────────────────────────

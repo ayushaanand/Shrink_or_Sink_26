@@ -121,8 +121,8 @@ def train(args):
     ])
     
     print(f"Loading native STL-10 labeled (5k) + unlabeled (100k) datasets to '{args.dataset_path}'...")
-    train_ds = datasets.STL10(root=args.dataset_path, split="train", download=True, transform=train_tf)
-    unlab_ds = datasets.STL10(root=args.dataset_path, split="unlabeled", download=True, transform=train_tf)
+    train_ds = datasets.STL10(root=args.dataset_path, split="train", download=not args.no_download, transform=train_tf)
+    unlab_ds = datasets.STL10(root=args.dataset_path, split="unlabeled", download=not args.no_download, transform=train_tf)
     
     teacher = get_teacher(args.teacher_path, device)
     if torch.cuda.device_count() > 1:
@@ -167,8 +167,8 @@ def train(args):
         generator=g
     )
 
-    print("Initializing tiny Student Model from model.py...")
-    student = DynamicNet().to(device)
+    print(f"Initializing Student Model (Widths: {args.widths}, Depths: {args.depths})...")
+    student = DynamicNet(widths=args.widths, depths=args.depths).to(device)
     if torch.cuda.device_count() > 1:
         print(f"Using {torch.cuda.device_count()} GPUs for Student!")
         student = nn.DataParallel(student)
@@ -235,7 +235,7 @@ def train(args):
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.4467, 0.4398, 0.4066], std=[0.2603, 0.2566, 0.2713]),
     ])
-    test_ds = datasets.STL10(root=args.dataset_path, split="test", download=True, transform=test_transform)
+    test_ds = datasets.STL10(root=args.dataset_path, split="test", download=not args.no_download, transform=test_transform)
     test_ld = DataLoader(test_ds, batch_size=256, shuffle=False, num_workers=2, pin_memory=True)
     
     student.eval()
@@ -261,5 +261,8 @@ if __name__ == "__main__":
     parser.add_argument("--model-path", type=str, default="student_final.pth", help="Output filename")
     parser.add_argument("--checkpoint", type=str, default="student_checkpoint.pth", help="Checkpoint file string")
     parser.add_argument("--epochs", type=int, default=100, help="Training length")
+    parser.add_argument("--widths", type=int, nargs='+', default=[32, 64, 128, 256], help="Widths for DynamicNet stages")
+    parser.add_argument("--depths", type=int, nargs='+', default=[2, 2, 2, 2], help="Depths for DynamicNet stages")
+    parser.add_argument("--no-download", action="store_true", help="Skip dataset download (for Kaggle/Local already downloaded)")
     parser.add_argument("--lr", type=float, default=2e-3, help="Learning rate")
     train(parser.parse_args())

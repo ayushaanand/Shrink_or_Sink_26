@@ -46,6 +46,7 @@ parser.add_argument("--mastery", type=int, default=150)
 parser.add_argument("--epochs", type=int, default=0, help="Total training epochs (overrides --burn-in and --mastery)")
 parser.add_argument("--strictness", type=float, default=0.98, help="Confidence threshold for pseudo-labels")
 parser.add_argument("--weights", type=str, default="", help="Path to initialized weights (for finetuning/warm restart)")
+parser.add_argument("--no-download", action="store_true", help="Skip dataset download")
 args = parser.parse_args()
 
 # Calculate total epochs based on arguments
@@ -83,9 +84,9 @@ clean_tf = transforms.Compose([
 
 
 # ── Datasets & Loaders ─────────────────────────────────────────────────────────
-train_ds = STL10(root=args.data, split="train", download=True, transform=train_tf)
-val_ds   = STL10(root=args.data, split="test",  download=True, transform=clean_tf)
-unlab_ds = STL10(root=args.data, split="unlabeled", download=True, transform=clean_tf)
+train_ds = STL10(root=args.data, split="train", download=not args.no_download, transform=train_tf)
+val_ds   = STL10(root=args.data, split="test",  download=not args.no_download,  transform=clean_tf)
+unlab_ds = STL10(root=args.data, split="unlabeled", download=not args.no_download, transform=clean_tf)
 
 val_ld   = DataLoader(val_ds, batch_size=args.batch, shuffle=False, num_workers=2, pin_memory=True)
 unlab_ld = DataLoader(unlab_ds, batch_size=args.batch, shuffle=False, num_workers=2, pin_memory=True)

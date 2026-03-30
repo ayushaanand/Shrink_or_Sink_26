@@ -50,6 +50,14 @@ python train.py --dataset-path ./data --teacher-path ./teacher_final.pth --model
 ```
 *(Note: `train.py` handles the STL-10 dataset downloading automatically.)*
 
+### 4. Research & Development (Architecture Search)
+You can now dynamically override the model architecture via the command line to test different model sizes:
+```bash
+# Example: Re-training with a 4-stage "Ultra-Tiny" configuration
+python train.py --widths 16 32 64 128 --depths 1 1 1 1 --dataset-path ./data
+```
+*(Defaults to the winning `[32, 64, 128, 256]` and `[2, 2, 2, 2]` if omitted.)*
+
 ### 3. Verification (Accuracy Check)
 To verify the accuracy of the generated `.pth` file on the unseen `test` split:
 ```bash
