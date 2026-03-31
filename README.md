@@ -18,22 +18,15 @@ By shifting from traditional heavy convolution blocks to highly-optimized depthw
 | **ResNet-50 Teacher** | **87.96%** | 300* | ~23.5M | ~90 MB |
 | **DynamicNet Student** | **70.84%** | 100 | ~10K | **26.4 KB** |
 
-*\*Teacher warm-start support is provided via `teacher_train.py --weights`, but the exact warm-restart experiment details/metrics are not enforced by the repository code alone.*
+*\*Replicating the exact 87.96% Teacher from scratch is highly stochastic and computationally demanding. The specific weights used for this submission were achieved over a 4-day training period that included 2 to 3 manual warm restarts (SGDR) and dynamic re-selection of the most confident unlabeled images for pseudo-labeling. The provided training script contains the core, un-restarted baseline engine that natively reaches ~83% within 1.2 hours.*
 
 ## 📂 Repository Structure (Mandatory Components)
 
-- **`model.py`**: Complete `DynamicNet` model architecture definition (used for inference).
-- **`train.py`**: Full student training pipeline (Knowledge Distillation).
-- **`test.py`**: Evaluation/inference script for the STL-10 `test` split.
-- **`README.md`**: This file (reproducibility instructions).
-- **`requirements.txt`**: All Python dependencies.
-
-Submission artifacts:
-- **`student_final.pth`**: Final compressed model file for immediate inference.
-- **`teacher_final.pth`**: Teacher weights used by `train.py` (required to run student training as-is).
-
-Optional:
-- **`teacher_train.py`**: Helper script to train a teacher model from scratch (not required to run evaluation).
+- **`student_final.pth`**: FP16-quantized weights saved in an ordered-list format (tensor names are not stored).
+- **`model.py`**: Defines the `DynamicNet` architecture utilizing Depthwise-Separable blocks.
+- **`test.py`**: Mandatory evaluation script featuring a Hybrid Loader for our optimized model format.
+- **`train.py`**: The complete Knowledge Distillation training pipeline. Includes fixed deterministic RNG seeds (`42`).
+- **`teacher_train.py`**: Optional helper script to train a ResNet-50 teacher model *from scratch* (extra; not required for evaluation).
 
 ---
 
@@ -41,18 +34,12 @@ Optional:
 
 1. **Depthwise Separable Bottlenecks**: De-couples spatial and channel convolutions, drastically reducing structural parameters by ~8x compared to a native CNN.
 2. **Feature Manifold Alignment**: The topology (**`[16, 32, 64, 64]`** with depths **`[1, 1, 1, 1]`**) was empirically engineered to downsample STL-10 images cleanly without wasting space.
-3. **ResNet-50 Knowledge Distillation**: The student model mimics the "dark knowledge" of our 87.96% Teacher through soft-targets (`T=4.0`, `Alpha=0.9`).
+3. **ResNet-50 Knowledge Distillation**: The student model mimics the "dark knowledge" of our 87.96% Teacher through soft-targets (`T=4.0`, `Alpha=0.9`).   
 4. **Ordered-List FP16 Serialization**: The student weights are saved as an ordered list of FP16 tensors, so tensor parameter names are not stored in `student_final.pth`.
 
 ---
 
 ## 🚀 Execution & Verification
-### Dependencies
-
-Install dependencies:
-```bash
-pip install -r requirements.txt
-```
 
 ### 1. Verification (Accuracy Check)
 To verify the accuracy of the generated `.pth` file on the official `test` split:
@@ -64,18 +51,17 @@ python test.py --dataset-path ./data --model-path student_final.pth
 ### 2. Training reproduction
 To reproduce the student weights using Knowledge Distillation from our teacher:
 ```bash
-python train.py --dataset-path ./data --teacher-path ./teacher_final.pth --model-path ./student_final.pth --checkpoint ./student_checkpoint.pth --widths 16 32 64 64 --depths 1 1 1 1 --epochs 100
+python train.py --dataset-path ./data --teacher-path ./teacher_final.pth --widths 16 32 64 64 --depths 1 1 1 1 --epochs 100
 ```
 
 ---
 
 ## ⚠️ Hardware & Performance Disclaimer
-The code runs on CPU/GPU (and will use `cuda` when available). Exact runtime depends on the machine.
 
 While the training scripts are technically universal and cross-platform (CUDA/MPS/CPU), we optimized the pipeline for GPU-friendly training on Kaggle-like T4 x2 hardware. Runtime can vary by environment.
 
 *   **Observed Speed**: In our experiments on Kaggle T4 x2, training took approximately **81 seconds per epoch** after the initial in-memory caching of the dataset.
-*   **Integrated Graphics / CPU**: On hardware without dedicated NVIDIA GPUs (e.g., Intel Iris Xe), the evaluation script will successfully fallback to CPU-only inference.
+*   **MPS / CPU**: On hardware without dedicated NVIDIA GPUs, the evaluation script will successfully fallback to MPS / CPU inference, though most of the scripts are tailored to exploit the Kaggle T4 2x hardware.
 *   **RAM Management**: `train.py` uses an in-memory cached dataset; on machines with limited system RAM (<8GB), you may need to adjust batch size or stop/avoid in-memory caching to prevent OOM errors.
 *   **Determinism**: Fully reproducible training via fixed seeds (42) and CuDNN determinism enabled.
 
@@ -83,4 +69,6 @@ While the training scripts are technically universal and cross-platform (CUDA/MP
 
 ## 💾 Resuming & Checkpoints
 
-If a run is interrupted, re-run the same `train.py` command. When `student_checkpoint.pth` exists, `train.py` will restore the model/optimizer/scheduler state from the last saved epoch.
+The `--weights` flag can be used to instigate a warm restart from a raw weights file for `train_teacher.py`. 
+
+The training script is designed to be restartable. If a run is interrupted, simply run the same command again. `train.py` will look for its checkpoint file (`student_checkpoint.pth`) and restore the model/optimizer/scheduler state from the last saved epoch. Same goes for `train_teacher.py`.
