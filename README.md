@@ -22,11 +22,18 @@ By shifting from traditional heavy convolution blocks to highly-optimized depthw
 
 ## 📂 Repository Structure (Mandatory Components)
 
-- **`student_final.pth`**: FP16-quantized weights saved in an ordered-list format (tensor names are not stored).
-- **`model.py`**: Defines the `DynamicNet` architecture utilizing Depthwise-Separable blocks.
-- **`test.py`**: Mandatory evaluation script featuring a Hybrid Loader for our optimized model format.
-- **`train.py`**: The complete Knowledge Distillation training pipeline. Includes fixed deterministic RNG seeds (`42`).
-- **`teacher_train.py`**: Optional helper script to train a ResNet-50 teacher model *from scratch* (extra; not required for evaluation).
+- **`model.py`**: Complete `DynamicNet` model architecture definition (used for inference).
+- **`train.py`**: Full student training pipeline (Knowledge Distillation).
+- **`test.py`**: Evaluation/inference script for the STL-10 `test` split.
+- **`README.md`**: This file (reproducibility instructions).
+- **`requirements.txt`**: All Python dependencies.
+
+Submission artifacts:
+- **`student_final.pth`**: Final compressed model file for immediate inference.
+- **`teacher_final.pth`**: Teacher weights used by `train.py` (required to run student training as-is).
+
+Optional:
+- **`teacher_train.py`**: Helper script to train a teacher model from scratch (not required to run evaluation).
 
 ---
 
@@ -40,6 +47,12 @@ By shifting from traditional heavy convolution blocks to highly-optimized depthw
 ---
 
 ## 🚀 Execution & Verification
+### Dependencies
+
+Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
 ### 1. Verification (Accuracy Check)
 To verify the accuracy of the generated `.pth` file on the official `test` split:
@@ -51,12 +64,13 @@ python test.py --dataset-path ./data --model-path student_final.pth
 ### 2. Training reproduction
 To reproduce the student weights using Knowledge Distillation from our teacher:
 ```bash
-python train.py --dataset-path ./data --teacher-path ./teacher_final.pth --widths 16 32 64 64 --depths 1 1 1 1 --epochs 100
+python train.py --dataset-path ./data --teacher-path ./teacher_final.pth --model-path ./student_final.pth --checkpoint ./student_checkpoint.pth --widths 16 32 64 64 --depths 1 1 1 1 --epochs 100
 ```
 
 ---
 
 ## ⚠️ Hardware & Performance Disclaimer
+The code runs on CPU/GPU (and will use `cuda` when available). Exact runtime depends on the machine.
 
 While the training scripts are technically universal and cross-platform (CUDA/MPS/CPU), we optimized the pipeline for GPU-friendly training on Kaggle-like T4 x2 hardware. Runtime can vary by environment.
 
@@ -69,4 +83,4 @@ While the training scripts are technically universal and cross-platform (CUDA/MP
 
 ## 💾 Resuming & Checkpoints
 
-The training script is designed to be restartable. If a run is interrupted, simply run the same command again. `train.py` will look for its checkpoint file (`student_checkpoint.pth`) and restore the model/optimizer/scheduler state from the last saved epoch.
+If a run is interrupted, re-run the same `train.py` command. When `student_checkpoint.pth` exists, `train.py` will restore the model/optimizer/scheduler state from the last saved epoch.
